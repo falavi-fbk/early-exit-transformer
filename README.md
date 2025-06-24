@@ -4,7 +4,9 @@ Training dynamic [Conformer](https://arxiv.org/abs/2005.08100) models for Automa
 
 **Paper**
 
-Find our original paper on early-exit training, 'Training dynamic models using early exits for automatic speech recognition on resource-constrained devices', on [arXiv](https://arxiv.org/abs/2309.09546).
+Find our original paper on early-exit training, `Training dynamic models using early exits for automatic speech recognition on resource-constrained devices`, on [arXiv](https://arxiv.org/abs/2309.09546).
+
+Also, our more recent work, `Splitformer: An improved early-exit architecture for automatic speech recognition on edge devices` is also available on [arXiv](https://www.arxiv.org/abs/2506.18035), with pretrained model weights on [Hugging Face](https://huggingface.co/MaxLSB/Splitformer).
 
 **Acknowledgements**
 
