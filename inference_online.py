@@ -61,7 +61,7 @@ def run(path, args, model, inf):
     dev=args.device  #cuda #cpu
     transc = handler_online(args, model, valid_len, inf, dev)
     print(transc)
-    sys.exit()
+
     return
 
 
