@@ -30,7 +30,7 @@ class TextTransform:
     """Maps characters to integers and vice versa"""
 
     def __init__(self):
-        char_map_str = """
+        self.char_map_str = """
         # 30
         ^ 1
         a 2
@@ -67,13 +67,13 @@ class TextTransform:
         # $=<EOS> 31
         # #=<PAD> 30
         # @=<blank> for ctc
-        char_map = {}
-        index_map = {}
-        for line in char_map_str.strip().split('\n'):
+        self.char_map = {}
+        self.index_map = {}
+        for line in self.char_map_str.strip().split('\n'):
             ch, index = line.split()
-            char_map[ch] = int(index)
-            index_map[int(index)] = ch
-        index_map[28] = ' '
+            self.char_map[ch] = int(index)
+            self.index_map[int(index)] = ch
+        self.index_map[28] = ' '
 
     def text_to_int(self, text):
         """ Use a character map and convert text to an integer sequence """
@@ -82,15 +82,17 @@ class TextTransform:
             if c == ' ':
                 ch = 28  # char_map['']
             else:
-                ch = char_map[c]
+                ch = self.char_map[c]
             int_sequence.append(ch)
         return int_sequence
 
     def int_to_text(self, labels):
         """ Use a character map and convert integer labels to an text sequence """
         string = []
-        for i in labels:
-            string.append(index_map[i.detach().item()])
+        #print("LAB:",labels.tolist())
+        #print(self.index_map)
+        for ind in labels.tolist():
+            string.append(self.index_map[ind])
         return ''.join(string)  # .replace('', ' ')
 
 
@@ -265,6 +267,7 @@ class CollateInferFn(object):
             del spec
             
             if self.args.bpe == True:
+                    
                 tg = torch.LongTensor(
                     [self.args.sp.bos_id()] + self.args.sp.encode_as_ids(label) + [self.args.sp.eos_id()])
             else:

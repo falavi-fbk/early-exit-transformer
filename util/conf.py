@@ -12,9 +12,9 @@ def get_parser():
     parser.add_argument(
         "--decoder_mode",
         type=str.lower,
-        required=True,
+        #required=True,
         choices=["ctc","aed"],
-        default=None,
+        default="ctc",
         help="""
             Required: Whether to use a connectionist temporal 
             classification-based ('ctc') or attention 
@@ -310,22 +310,33 @@ def get_parser():
     )
 
     parser.add_argument(
-        "--lexicon_path",
+        "--bpe_lexicon",
         type=str,
-        default="lexicon.txt",
+        default="sentencepiece/build/bpe-256.lex",
         help="""
-            Path to lexicon file.
+            Path to word-piece lexicon file.
             NOTE: The current implementation overwrites this value and
             uses a custom lexicon file for SentencePiece tokenization.
         """
     )
 
     parser.add_argument(
-        "--tokens_path",
+        "--bpe_model",
         type=str,
-        default="tokens.txt",
+        default="sentencepiece/build/bpe-256.model",
         help="""
-            Path to tokens file.
+            Path to word-piece model file.
+            NOTE: The current implementation overwrites this value and
+            uses a custom lexicon file for SentencePiece tokenization.
+        """
+    )
+    
+    parser.add_argument(
+        "--bpe_tokens",
+        type=str,
+        default="sentencepiece/build/bpe-256.tok",
+        help="""
+            Path to word-piece tokens file.
             NOTE: The current implementation overwrites this value and
             uses a custom tokens file for SentencePiece tokenization.
         """
@@ -471,15 +482,15 @@ def get_args():
 
     if args.bpe == True:
         conf["sp"] = spm.SentencePieceProcessor()
-        conf["sp"].load('sentencepiece/build/libri.bpe-256.model')
+        conf["sp"].load(args.bpe_model)
         conf["src_pad_idx"] = 0
         conf["trg_pad_idx"] = 126
         conf["trg_sos_idx"] = 1
         conf["trg_eos_idx"] = 2
         conf["enc_voc_size"] = conf["sp"].get_piece_size()
         conf["dec_voc_size"] = conf["sp"].get_piece_size()
-        conf["lexicon"] = "sentencepiece/build/librispeech-bpe-256.lex"
-        conf["tokens"] = "sentencepiece/build/librispeech-bpe-256.tok"
+        conf["lexicon"] = args.bpe_lexicon
+        conf["tokens"] = args.bpe_tokens
  
     conf["inf"] = float('inf')
 
