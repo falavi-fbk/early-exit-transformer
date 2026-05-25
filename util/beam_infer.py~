@@ -358,7 +358,7 @@ class BeamInference(object):
         else:
             final = self.s_decoder.finalize()
             self.s_decoder.reset()
-        return(final)
+            return(final)
             
     def beam_predict(self, model, input_sequence):
         emission = model.ctc_encoder(input_sequence)

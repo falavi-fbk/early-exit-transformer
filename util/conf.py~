@@ -282,7 +282,7 @@ def get_parser():
 
     parser.add_argument(
         "--drop_prob",
-        type=float,
+        type=int,
         default=0.1,
         help="""
             Probability of a given element of the input to be 
