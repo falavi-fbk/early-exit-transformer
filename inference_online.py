@@ -38,9 +38,9 @@ def melspec_transform(waveform, args):
 SAMPLE_RATE = 16000
 
 
-LOOKBEHIND_SEC = 0.5 #1.0 #1.0
-CHUNK_SEC      = 2.0
-LOOKAHEAD_SEC  = 0.5 #1.0 #1.0
+LOOKBEHIND_SEC = 2.5 #0.5
+CHUNK_SEC      = 0.51 #2.0
+LOOKAHEAD_SEC  = 0.5 #0.5
 
 LB = int(LOOKBEHIND_SEC * SAMPLE_RATE)
 CK = int(CHUNK_SEC      * SAMPLE_RATE)
@@ -74,6 +74,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 HOST = "0.0.0.0"
 PORT = 50007
 
+'''
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 sock.bind((HOST, PORT))
 sock.listen(1)
@@ -81,7 +82,7 @@ sock.listen(1)
 print("WSL in ascolto...")
 conn, addr = sock.accept()
 print("Connesso a:", addr)
-
+'''
 
 
 _last_len = 0
@@ -166,23 +167,25 @@ def build_window_from_buffer(buffer, final_flush=False):
     final_flush: True quando il VAD dice che ha finito lo speech
     """
 
-    if final_flush:
-        if len(buffer) == 0:
-            return None, buffer
-        window = buffer.copy()
-        new_buffer = buffer[:0]   # svuota
-        return window, new_buffer
-
     LB_SAMPLES = LB
     CK_SAMPLES = CK
     LA_SAMPLES = LA
-    
-    
     total_needed = LB_SAMPLES + CK_SAMPLES + LA_SAMPLES
+
+    if final_flush:
+        #if len(buffer) == 0:
+        #if len(buffer) < total_needed:
+        #    return None, buffer
+        window = buffer.copy()
+        new_buffer = buffer[:0]   # svuota
+        buffer = buffer[len(buffer):]   # svuota        
+        #return window, new_buffer
+        return window, buffer
 
     # Se non abbiamo abbastanza per una finestra completa
     if len(buffer) < CK_SAMPLES:
         # troppo poco per emettere qualcosa
+        #print("<CK_SAMPLES", final_flush)
         if not final_flush:
             return None, buffer
         # final flush: emetti tutto quello che c'e`
@@ -193,6 +196,7 @@ def build_window_from_buffer(buffer, final_flush=False):
     # Se abbiamo abbastanza per il chunk centrale
     # ma non abbastanza per LB o LA  usiamo quello che c’e`
     if len(buffer) < total_needed:
+        #print("<total_need", final_flush)        
         if not final_flush:
             # aspettiamo ancora look-ahead
             return None, buffer
@@ -225,15 +229,11 @@ EMB_PS = FEAT_FPS // SUBSAMPLING
 LB_e = int(LOOKBEHIND_SEC * EMB_PS )
 CK_e = int(CHUNK_SEC  * EMB_PS)
 
-def handler_online(args, model, valid_len,  inf, dev):
-    #audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-    #waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/2961-960-0000.flac")
-    #waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/20160607-0900-PLENARY-3-it_20160607-09:32:08_3.ogg")
-    #waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/test_stream.wav")
+def handler_online(args, model, valid_len,  inf, dev, conn):
     
     print("Inizio streaming ASR...")
     raw_path = "central_stream.pcm"
-    central_f = open(raw_path, "wb")
+    #central_f = open(raw_path, "wb")
 
     
     buffer = np.zeros(0, dtype=np.float32)
@@ -254,19 +254,17 @@ def handler_online(args, model, valid_len,  inf, dev):
             # print("END:",now, last_voice_time, now - last_voice_time)
             # se solo heartbeat per troppo tempo → fine segmento
             if count_silent_frames < FRAME_TIMEOUT:
+                #print(count_silent_frames, FRAME_TIMEOUT)
                 continue
             else:
-                win, buffer = build_window_from_buffer(buffer, final_flush=False)
-
-
+                win, buffer = build_window_from_buffer(buffer, final_flush=True)
                 if win is None:
                     continue
         
                 # ---- FEATURE EXTRACTION ----
                 wav = torch.from_numpy(win).unsqueeze(0)  # (1, T)
-
                 if wav.size(1) > int(SAMPLE_RATE / 10):  #remain wav length greater than 100ms
-                    print("\nCOUNT_SILENCE:", count_silent_frames, wav.size(1))
+                    #print("\nCOUNT_SILENCE:", count_silent_frames, wav.size(1))
                     spec = spec_transform(wav, args)
                     spec = melspec_transform(spec, args).to(dev)
 
@@ -274,7 +272,7 @@ def handler_online(args, model, valid_len,  inf, dev):
                     valid_len = torch.tensor([spec.size(2)])
                     encoder = model(spec, valid_len)
                     enc = encoder[5]   # (B, T_enc, D)
-                    enc_central = enc[:, LB_e : LB_e + CK_e, :]
+                    enc_central = enc #[:, LB_e : LB_e + CK_e, :]
             
                     # 5) decodifica
                     transc = inf.stream_decoder(emission=enc_central, partial=True)
@@ -283,18 +281,7 @@ def handler_online(args, model, valid_len,  inf, dev):
                     print_live_caption(transc)                
                 
                 count_silent_frames = 0
-
-                '''
-                final = inf.stream_decoder(partial=False)
-                final_text = normalize_final_output(final)
-                if final_text.strip():
-                    print("\nSILENCE DETECTED:", final_text)
-                    # possiamo decidere se svuotare il buffer o tenere un po' di contesto
-                    # qui svuotiamo per segmenti indipendenti
-                    #pcm_buffer.clear()
-                    #read_pos = 0
-                '''
-                
+                final_flush = False
                 continue
 
         # ---- CHUNK VOCALE ----
@@ -306,7 +293,6 @@ def handler_online(args, model, valid_len,  inf, dev):
         # int16 → float32 [-1, 1]
 
         pcm_buffer = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-
         #pcm = np.clip(pcm, -1.0, 1.0)
         
         buffer = np.concatenate([buffer, pcm_buffer])
@@ -324,14 +310,16 @@ def handler_online(args, model, valid_len,  inf, dev):
         # --- Converti in int16 per salvataggio PCM ---
         pcm16 = (central * 32767).astype(np.int16)
         # --- Append al file PCM ---
-        central_f.write(pcm16.tobytes())
+        #central_f.write(pcm16.tobytes())
         #print(f"[receiver] Salvati {len(central)} campioni centrali")
         
         
         # ---- FEATURE EXTRACTION ----
         # win shape: (T,)
         wav = torch.from_numpy(win).unsqueeze(0)  # (1, T)
+        #print("BUFF:",len(buffer), len(win), len(win[LB:LB+CK]))
         #print("WAV:",wav.size())
+        
         #print("T2:", time.time())        
         # 1) feature extraction
         spec = spec_transform(wav, args)
@@ -342,16 +330,15 @@ def handler_online(args, model, valid_len,  inf, dev):
         encoder = model(spec, valid_len)
         enc = encoder[5]   # (B, T_enc, D)
         B, T_full, D = enc.shape
-        #LB_f = T_full // 4
-        #CK_f = T_full // 2
-        #enc_central = enc[:, LB_f : LB_f + CK_f, :]
         enc_central = enc[:, LB_e : LB_e + CK_e, :]
-            
+
         # 5) decodifica
         transc = inf.stream_decoder(emission=enc_central, partial=True)
+        #print("TRANSC:",transc)
         #print("Parziale: "," ".join(transc), end='\r')
         #print(" ".join(transc), end='\r')
         #transc=" ".join(transc)
+        #
         print_live_caption(transc)                
 
     # flush finale se la connessione termina        
@@ -364,7 +351,14 @@ def handler_online(args, model, valid_len,  inf, dev):
     sock.close()
 
     
-    '''
+
+def handler_batch(args, model, valid_len,  inf, dev):
+    #audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+    #waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/2961-960-0000.flac")
+    waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/20160607-0900-PLENARY-3-it_20160607-09:32:08_3.ogg")
+    #waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/test_stream.wav")
+
+
     spec = spec_transform(waveform, args)  # .to(device)
     spec = melspec_transform(spec, args).to(dev)
     valid_len = torch.tensor([spec.size(2)])
@@ -384,14 +378,24 @@ def handler_online(args, model, valid_len,  inf, dev):
         transc = args.sp.decode(best_combined[0][0].tokens).lower()
 
     return transc
-    '''
 
-def run(args, model, inf):
     
+    
+def run(args, model, inf):
+
     valid_len = 0
     dev=args.device  #cuda #cpu
-    transc = handler_online(args, model, valid_len, inf, dev)
-    print(transc)
+    if args.online_batch == False:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.bind((HOST, PORT))
+        sock.listen(1)
+        print("WSL in ascolto...")
+        conn, addr = sock.accept()
+        print("Connesso a:", addr)
+        handler_online(args, model, valid_len, inf, dev, conn)        
+    else:
+        transc = handler_batch(args, model, valid_len, inf, dev)
+        print(transc)
 
     return
 

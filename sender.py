@@ -4,6 +4,8 @@ import webrtcvad
 import numpy as np
 import pyaudio
 import time
+import sounddevice as sd
+
 
 # ============================================================
 #                     PARAMETRI GLOBALI
@@ -52,6 +54,44 @@ stream = pa.open(
     input=True,
     frames_per_buffer=FRAME_SIZE,
 )
+
+
+def get_default_input_device():
+    idx = sd.default.device[0]  # input device index
+    info = sd.query_devices(idx)
+    return idx, info
+
+def classify_device(info):
+    name = info["name"].lower()
+    channels = info["max_input_channels"]
+
+    if "array" in name or channels > 1:
+        return "microphone_array"
+    else:
+        return "headset"
+
+def get_gain_for_device(device_type):
+    if device_type == "microphone_array":
+        return 5
+    if device_type == "headset":
+        return 1
+    return 1.5  # fallback
+
+
+def get_dynamic_gain():
+    idx, info = get_default_input_device()
+    device_type = classify_device(info)
+    gain = get_gain_for_device(device_type)
+
+    print("Default device:", info["name"])
+    print("Type:", device_type)
+    print("Using gain:", gain)
+
+    return gain
+
+
+GAIN=get_dynamic_gain()
+
 
 # ============================================================
 #                     CONNESSIONE SOCKET
@@ -121,7 +161,7 @@ try:
             #sock.sendall(data)
             sock.sendall(payload)            
         else:
-            #print("HEART_BEAT")            
+            print("HEART_BEAT")            
             # heartbeat
             sock.sendall(struct.pack(">I", 0))
 

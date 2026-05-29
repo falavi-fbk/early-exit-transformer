@@ -46,6 +46,15 @@ def get_parser():
     )
 
     parser.add_argument(
+        "--online_batch",
+        type=bool,
+        default=False,
+        help="""
+            Use inference_online with a pre-recorded audio file instead of streaming from microphone.
+        """
+    )
+    
+    parser.add_argument(
         "--distill",
         type=bool,
         default=False,
