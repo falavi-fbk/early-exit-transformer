@@ -169,7 +169,8 @@ def build_window_from_buffer(buffer, final_flush=False):
 
             LB_ = buffer[:LB_SAMPLES]
             CK_ = buffer[LB_SAMPLES : LB_SAMPLES + CK_SAMPLES]
-            LA_ = buffer[LB_SAMPLES + CK_SAMPLES : LB_SAMPLES + CK_SAMPLES + LA_SAMPLES]
+            #LA_ = buffer[LB_SAMPLES + CK_SAMPLES : LB_SAMPLES + CK_SAMPLES + LA_SAMPLES]
+            LA_ = buffer[LB_SAMPLES + CK_SAMPLES : len(buffer)]    
         
             window = np.concatenate([LB_, CK_, LA_])
             #print("W_FLUSH:",len(window))
