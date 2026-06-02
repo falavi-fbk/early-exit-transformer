@@ -87,7 +87,7 @@ print("Connesso a:", addr)
 
 _last_len = 0
 
-def print_live_caption(partial):
+def print_live_caption(partial, reset=False):
     global _last_len
 
     # Normalizza l’output
@@ -131,28 +131,6 @@ def recv_exact(conn, n):
         buf += chunk
     return buf
 
-#############################################
-# FUNZIONE: COSTRUISCI FINESTRA PER IL MODELLO
-#############################################
-
-def _build_window_from_buffer_(buffer):
-    """
-    Produce una finestra ogni CHUNK_SEC secondi:
-    finestra = 1s LB + 2s CK + 1s LA = 4s totali
-    Avanza il buffer di 2 secondi (CK).
-    """
-
-    # Se non abbiamo ancora 4 secondi -> niente finestra
-    if len(buffer) < WINDOW:
-        return None, buffer
-
-    # Finestra completa
-    window = buffer[:WINDOW]
-
-    # Avanza di 2 secondi (chunk centrale)
-    new_buffer = buffer[ADVANCE:]
-
-    return window, new_buffer    
 
 #############################################
 # LOOP PRINCIPALE
@@ -176,11 +154,28 @@ def build_window_from_buffer(buffer, final_flush=False):
         #if len(buffer) == 0:
         #if len(buffer) < total_needed:
         #    return None, buffer
-        window = buffer.copy()
-        new_buffer = buffer[:0]   # svuota
-        buffer = buffer[len(buffer):]   # svuota        
-        #return window, new_buffer
-        return window, buffer
+        #print("")
+        #print("HEART-BEAT:",len(buffer))
+        if len(buffer) < CK_SAMPLES:
+            return None, buffer
+        else:
+            '''
+            window = buffer.copy()
+        
+            #buffer = buffer[len(buffer):]   # svuota        
+            #return window, new_buffer
+            new_buffer = buffer[:0]
+            '''
+
+            LB_ = buffer[:LB_SAMPLES]
+            CK_ = buffer[LB_SAMPLES : LB_SAMPLES + CK_SAMPLES]
+            LA_ = buffer[LB_SAMPLES + CK_SAMPLES : LB_SAMPLES + CK_SAMPLES + LA_SAMPLES]
+        
+            window = np.concatenate([LB_, CK_, LA_])
+            #print("W_FLUSH:",len(window))
+            # Avanza il buffer di CK 
+            buffer = buffer[CK_SAMPLES:]
+            return window, buffer
 
     # Se non abbiamo abbastanza per una finestra completa
     if len(buffer) < CK_SAMPLES:
@@ -210,11 +205,11 @@ def build_window_from_buffer(buffer, final_flush=False):
     # Caso normale: finestra completa
     LB_ = buffer[:LB_SAMPLES]
     CK_ = buffer[LB_SAMPLES : LB_SAMPLES + CK_SAMPLES]
-    LA_ = buffer[LB_SAMPLES + CK_SAMPLES : LB_SAMPLES + CK_SAMPLES + LA_SAMPLES]
+    LA_ = buffer[LB_SAMPLES + CK_SAMPLES : ,]
 
     window = np.concatenate([LB_, CK_, LA_])
 
-    # Avanza il buffer di CK (stride = 2 secondi)
+    # Avanza il buffer di CK 
     buffer = buffer[CK_SAMPLES:]
 
     return window, buffer
@@ -238,7 +233,7 @@ def handler_online(args, model, valid_len,  inf, dev, conn):
     
     buffer = np.zeros(0, dtype=np.float32)
     count_silent_frames = 0 #
-
+    speech_detected = False
     while True:
         # ---- leggi header ----
         header = recv_exact(conn, 4)
@@ -249,14 +244,18 @@ def handler_online(args, model, valid_len,  inf, dev, conn):
         #print("LEN:",length)
         # ---- HEARTBEAT: silenzio ----
         if length == 0:
-            count_silent_frames  = count_silent_frames + 1
-            
+            if speech_detected:
+                count_silent_frames  = count_silent_frames + 1
+
             # print("END:",now, last_voice_time, now - last_voice_time)
             # se solo heartbeat per troppo tempo → fine segmento
             if count_silent_frames < FRAME_TIMEOUT:
-                #print(count_silent_frames, FRAME_TIMEOUT)
+                #print("SILENZIO:",count_silent_frames, FRAME_TIMEOUT)
                 continue
             else:
+                #print("END_DETECTED:",count_silent_frames, FRAME_TIMEOUT)
+                count_silent_frames = 0
+                speech_detected = False
                 win, buffer = build_window_from_buffer(buffer, final_flush=True)
                 if win is None:
                     continue
@@ -272,15 +271,19 @@ def handler_online(args, model, valid_len,  inf, dev, conn):
                     valid_len = torch.tensor([spec.size(2)])
                     encoder = model(spec, valid_len)
                     enc = encoder[5]   # (B, T_enc, D)
-                    enc_central = enc #[:, LB_e : LB_e + CK_e, :]
+                    l_enc = enc.size(1)
+                    #if l_enc < LB_e + CK_e:
+                    #    continue
+
+                    enc_central = enc[:, LB_e : LB_e + CK_e, :]
             
                     # 5) decodifica
                     transc = inf.stream_decoder(emission=enc_central, partial=True)
                     #print(" ".join(transc), end='\r')
                     #transc=" ".join(transc)
-                    print_live_caption(transc)                
+                    print_live_caption(transc, reset=True)
+                    print("")
                 
-                count_silent_frames = 0
                 final_flush = False
                 continue
 
@@ -303,7 +306,7 @@ def handler_online(args, model, valid_len,  inf, dev, conn):
         
         if win is None:
             continue
-        
+        speech_detected = True
         #print(f"[receiver] Finestra pronta: {len(win)} campioni")
         # --- Estrai SOLO la parte centrale (2 secondi) ---
         central = win[LB : LB + CK]   # float32 [-1,1]
