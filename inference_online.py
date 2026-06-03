@@ -151,25 +151,12 @@ def build_window_from_buffer(buffer, final_flush=False):
     total_needed = LB_SAMPLES + CK_SAMPLES + LA_SAMPLES
 
     if final_flush:
-        #if len(buffer) == 0:
-        #if len(buffer) < total_needed:
-        #    return None, buffer
-        #print("")
-        #print("HEART-BEAT:",len(buffer))
+
         if len(buffer) < CK_SAMPLES:
             return None, buffer
         else:
-            '''
-            window = buffer.copy()
-        
-            #buffer = buffer[len(buffer):]   # svuota        
-            #return window, new_buffer
-            new_buffer = buffer[:0]
-            '''
-
             LB_ = buffer[:LB_SAMPLES]
             CK_ = buffer[LB_SAMPLES : LB_SAMPLES + CK_SAMPLES]
-            #LA_ = buffer[LB_SAMPLES + CK_SAMPLES : LB_SAMPLES + CK_SAMPLES + LA_SAMPLES]
             LA_ = buffer[LB_SAMPLES + CK_SAMPLES : len(buffer)]    
         
             window = np.concatenate([LB_, CK_, LA_])
@@ -177,43 +164,22 @@ def build_window_from_buffer(buffer, final_flush=False):
             # Avanza il buffer di CK 
             buffer = buffer[CK_SAMPLES:]
             return window, buffer
-
-    # Se non abbiamo abbastanza per una finestra completa
-    if len(buffer) < CK_SAMPLES:
-        # troppo poco per emettere qualcosa
-        #print("<CK_SAMPLES", final_flush)
-        if not final_flush:
+    else:
+        # Se non abbiamo abbastanza aspettiamo ancora look-ahead
+        if len(buffer) < total_needed:
             return None, buffer
-        # final flush: emetti tutto quello che c'e`
-        window = buffer.copy()
-        buffer = buffer[len(buffer):]   # svuota
-        return window, buffer
+
+        # Caso normale: finestra completa
+        LB_ = buffer[:LB_SAMPLES]
+        CK_ = buffer[LB_SAMPLES : LB_SAMPLES + CK_SAMPLES]
+        LA_ = buffer[LB_SAMPLES + CK_SAMPLES : ,]
+
+        window = np.concatenate([LB_, CK_, LA_])
         
-    # Se abbiamo abbastanza per il chunk centrale
-    # ma non abbastanza per LB o LA  usiamo quello che c’e`
-    if len(buffer) < total_needed:
-        #print("<total_need", final_flush)        
-        if not final_flush:
-            # aspettiamo ancora look-ahead
-            return None, buffer
+        # Avanza il buffer di CK 
+        buffer = buffer[CK_SAMPLES:]
 
-        # final flush: emetti finestra elastica
-        # prendiamo tutto cio` che c’e`
-        window = buffer.copy()
-        buffer = buffer[len(buffer):]
         return window, buffer
-
-    # Caso normale: finestra completa
-    LB_ = buffer[:LB_SAMPLES]
-    CK_ = buffer[LB_SAMPLES : LB_SAMPLES + CK_SAMPLES]
-    LA_ = buffer[LB_SAMPLES + CK_SAMPLES : ,]
-
-    window = np.concatenate([LB_, CK_, LA_])
-
-    # Avanza il buffer di CK 
-    buffer = buffer[CK_SAMPLES:]
-
-    return window, buffer
 
 
 
