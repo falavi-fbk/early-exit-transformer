@@ -46,6 +46,10 @@ LB = int(LOOKBEHIND_SEC * SAMPLE_RATE)
 CK = int(CHUNK_SEC      * SAMPLE_RATE)
 LA = int(LOOKAHEAD_SEC  * SAMPLE_RATE)
 
+TOTAL_LEN = LB + CK + LA
+
+
+
 WINDOW = LB + CK + LA   # 4 secondi = 64000 campioni
 ADVANCE = CK            # avanza di 2 secondi = 32000 campioni
 
@@ -201,6 +205,7 @@ def handler_online(args, model, valid_len,  inf, dev, conn):
     buffer = np.zeros(0, dtype=np.float32)
     count_silent_frames = 0 #
     speech_detected = False
+    first_block = True
     while True:
         # ---- leggi header ----
         header = recv_exact(conn, 4)
@@ -276,9 +281,9 @@ def handler_online(args, model, valid_len,  inf, dev, conn):
         speech_detected = True
         #print(f"[receiver] Finestra pronta: {len(win)} campioni")
         # --- Estrai SOLO la parte centrale (2 secondi) ---
-        central = win[LB : LB + CK]   # float32 [-1,1]
+        ###central = win[LB : LB + CK]   # float32 [-1,1]
         # --- Converti in int16 per salvataggio PCM ---
-        pcm16 = (central * 32767).astype(np.int16)
+        ###pcm16 = (central * 32767).astype(np.int16)
         # --- Append al file PCM ---
         #central_f.write(pcm16.tobytes())
         #print(f"[receiver] Salvati {len(central)} campioni centrali")
@@ -300,9 +305,13 @@ def handler_online(args, model, valid_len,  inf, dev, conn):
         encoder = model(spec, valid_len)
         enc = encoder[5]   # (B, T_enc, D)
         B, T_full, D = enc.shape
-        enc_central = enc[:, LB_e : LB_e + CK_e, :]
-
-        # 5) decodifica
+        if first_block:
+            enc_central = enc
+            first_block = False
+        else:
+            enc_central = enc[:, LB_e : LB_e + CK_e, :]
+            
+            # 5) decodifica
         transc = inf.stream_decoder(emission=enc_central, partial=True)
         #print("TRANSC:",transc)
         #print("Parziale: "," ".join(transc), end='\r')
@@ -325,7 +334,8 @@ def handler_online(args, model, valid_len,  inf, dev, conn):
 def handler_batch(args, model, valid_len,  inf, dev):
     #audio = np.frombuffer(pcm_bytes, dtype=np.int16).astype(np.float32) / 32768.0
     #waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/2961-960-0000.flac")
-    waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/20160607-0900-PLENARY-3-it_20160607-09:32:08_3.ogg")
+    waveform, sample_rate = torchaudio.load("/mnt/c/Users/danie/Downloads/conta1010.wav")
+    #waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/20160607-0900-PLENARY-3-it_20160607-09:32:08_3.ogg")
     #waveform, sample_rate = torchaudio.load("/home/daniele/early-exit-transformer/test_stream.wav")
 
 
